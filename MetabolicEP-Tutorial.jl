@@ -37,7 +37,7 @@ pyplot();
 # +
 # Toy Model
 # rxns: gt    ferm  resp  ldh   lt   biom    atpm  # mets
-const S = [   1.0  -1.0   0.0   0.0   0.0   0.0    0.0;  #  G
+S = [   1.0  -1.0   0.0   0.0   0.0   0.0    0.0;  #  G
         0.0   2.0  18.0   0.0   0.0  -55.0  -5.0;  #  E
         0.0   2.0  -1.0  -1.0   0.0   0.0    0.0;  #  P
         0.0   0.0   0.0   1.0   1.0   0.0    0.0;  #  L
@@ -46,17 +46,15 @@ const S = [   1.0  -1.0   0.0   0.0   0.0   0.0    0.0;  #  G
 M,N = size(S)
 
 mets = ["G", "E", "P", "L"]
-const b =    [0.0, 0.0, 0.0, 0.0] # demand
+b =    [0.0, 0.0, 0.0, 0.0] # demand
 metNames = ["Glucose", "Energy", "Intermediate Product" , "Lactate"];
 
 rxns = ["gt"  ,"ferm" ,"resp" , "ldh" ,  "lt" , "biom", "atpm"];
-const lb =   [0.0   , 0.0   , 0.0   ,  0.0  , -10.0,   0.0,     0.5];
-const ub =   [1.0   , 10.0  , 10.0  , 10.0  ,   0.0,  10.0,    10.0];
+lb =   [0.0   , 0.0   , 0.0   ,  0.0  , -10.0,   0.0,     0.5];
+ub =   [1.0   , 10.0  , 10.0  , 10.0  ,   0.0,  10.0,    10.0];
 rxnNames = ["Glucose transport", "Fermentation", "Respiration", 
     "Lactate DH", "Lactate transport", "Biomass production rate", "atp demand"];
 # -
-
-const β = 1e10
 
 # For a vector of fluxes satisfying bounds 2, we can define a quadratic energy function $E(n)$ whose minimum(s) lies on the assignment of variables $v$ satisfying the stoichiometric constraints in equation (1)
 #
@@ -120,9 +118,7 @@ const β = 1e10
 #
 # Note that in this approximation fluxes result unbounded
 
-function ϕ(vn, an = 0.0, dn = 1.0)
-    exp(-((vn - an)^2)/(2dn))/sqrt(2π*dn)
-end
+ϕ(vn, an = 0.0, dn = 1.0) = exp(-((vn - an)^2)/(2dn))/sqrt(2π*dn)
 
 # whose statistics, that is, the mean and the variance, are constrained to be equal to the one of $\psi_n(v_n)$. That is:
 #
@@ -198,21 +194,30 @@ vline!([ψave(_lb, _ub) + sqrt(ψvar(_lb, _ub))],  color = :black, ls = :dash, l
 # and $\mathbf D$ is a diagonal matrix having elements $d_1^{-1}, ... , d_N^{-1}$.
 
 function Q(v, μ, Σ)
+    N = length(v)
     Zq = sqrt(det(Σ))*(2π)^(N/2)
     return exp(-0.5(v - μ)'*inv(Σ)*(v - μ))/Zq
 end
 
-a = ψave.(lb, ub)
-d = ψvar.(lb, ub)
-D = Diagonal(1 ./ a)
-Σ = inv(β*S'S + D)
-μ = Σ*(β*S'b + D*a);
+# +
+β = 1e12
+naϕ_a = ψave.(lb, ub)
+naϕ_d = ψvar.(lb, ub)
+
+# This are constants
+_βSS = β*S'*S
+_βSb = β*S'*b
+
+_D = Diagonal(1 ./ naϕ_d)
+naQ_Σ = inv(_βSS + _D)
+naQ_σ = naQ_Σ |> diag
+naQ_μ = naQ_Σ * (_βSb + _D * naϕ_a);
+# -
 
 ps = []
 for (i, ider) in rxns |> enumerate
-    p = Plots.plot(lb[i], ub[i], xlabel = "v", ylabel = "pdf", label = ider) do v
-        ϕ(v, μ[i], Σ[i, i])
-    end
+    p = Plots.plot(xlabel = "v", ylabel = "pdf", title = ider)
+    Plots.plot!(p, v -> ϕ(v, naQ_μ[i], naQ_σ[i]), lb[i], ub[i], label = "")
     push!(ps, p)
 end
 
@@ -361,92 +366,96 @@ Plots.plot!(ϕ, -10, 10, label = "ϕ")
 # This implementation is just for educative propose, for a efficient one see the reference. 
 
 # +
-iters = 5000
-const β = 1e12
-
-# This are constants
-_βSS = β*S'*S
-_βSb = β*S'*b
+iters = 10000
+β = 1e12
 
 # initialize a and d, just using the parameters of the exact priors
-a = ψave.(lb, ub)
-d = ψvar.(lb, ub)
+ϕ_a = ψave.(lb, ub) # mean of the normal priors
+ϕ_d = ψvar.(lb, ub) # variance of the normal priors
 
-# For numerical reasons we normalize all
-# nfactor = 1.0 # max(maximum(abs.(ub)), maximum(abs.(lb))) # scale factor
-nlb = copy(lb) # ./ nfactor
-nub = copy(ub) # ./ nfactor
 
-# track the tilted parameters in each iteration
-μss = [] 
-σss = [] 
-
-# Last itaration
-ave = zeros(Float64, N)
-var = zeros(Float64, N)
+# Tilted (Qn) marginal params
+Qn_μ = zeros(Float64, N) # mean vector of the marginals of the tilted (normal part)
+Qn_σ = zeros(Float64, N) # variance vector of the marginals of the tilted (normal part)
+Qn_mμ = zeros(Float64, N) # mean vector of the marginals of the tilted (truncated normal)
+Qn_mσ = zeros(Float64, N) # variance vector of the marginals of the tilted (truncated normal)
 for it in 1:iters
+    Dn = Diagonal(1 ./ ϕ_d)
     for (n, rxn) in enumerate(rxns)
         
         # Tilted parameters
-        Dn = Diagonal(1 ./ d)
         Dn[n,n] = 0.0
         
-        Σn = inv(_βSS + Dn)
-        μn = Σn*(_βSb + Dn * a)
+        # Parameters of the normal part of the tilted
+        Qn_Σ = inv(_βSS + Dn)
+        Qn_μ[n] = (Qn_Σ*(_βSb + Dn * ϕ_a))[n]
+        Qn_σ[n] = Qn_Σ[n,n]
         
-        # Tilted moments
-        An = (nlb[n] - μn[n])/sqrt(Σn[n,n])
-        Bn = (nub[n] - μn[n])/sqrt(Σn[n,n])
+        # Tilted marginal moments
+        An = (lb[n] - Qn_μ[n])/sqrt(Qn_σ[n])
+        Bn = (ub[n] - Qn_μ[n])/sqrt(Qn_σ[n])
         ϕAn = ϕ(An);  ϕBn = ϕ(Bn)
         ΦAn = Φ(An); ΦBn = Φ(Bn)
         
-        ave[n] = μn[n] + ((ϕAn - ϕBn)/(ΦBn - ΦAn)) * sqrt(Σn[n,n])
-        var[n] = Σn[n,n] * (1 + (An*ϕAn - Bn*ϕBn)/(ΦBn - ΦAn) - ((ϕAn - ϕBn)/(ΦBn - ΦAn))^2)
+        Qn_mμ[n] = Qn_μ[n] + ((ϕAn - ϕBn)/(ΦBn - ΦAn)) * sqrt(Qn_σ[n])
+        Qn_mσ[n] = Qn_σ[n] * (1 + (An*ϕAn - Bn*ϕBn)/(ΦBn - ΦAn) - ((ϕAn - ϕBn)/(ΦBn - ΦAn))^2)
         
         
         # Updating an and dn
-        d[n] = 1/(1/var[n] - 1/Σn[n,n])
-        a[n] = d[n]*(ave[n]*(1/d[n] + 1/Σn[n,n]) - μn[n]/Σn[n,n])
+        ϕ_d[n] = 1/(1/Qn_mσ[n] - 1/Qn_σ[n])
+        ϕ_a[n] = ϕ_d[n]*(Qn_mμ[n]*(1/ϕ_d[n] + 1/Qn_σ[n]) - Qn_μ[n]/Qn_σ[n])
+        
+        Dn[n,n] = 1 / ϕ_d[n]
     end
 end
 # -
 
-D = Diagonal(1 ./ a)
-Σ = inv(β*S'S + D)
-μ = Σ*(β*S'b + D*a);
-tϕs = [Truncated(Normal(μ[i], sqrt(Σ[i,i])), lb[i], ub[i]) for i in eachindex(rxns)];
+_D = Diagonal(1 ./ ϕ_d)
+Q_Σ = inv(_βSS + _D)
+Q_σ = Q_Σ |> diag
+Q_μ = Q_Σ*(_βSb + _D*ϕ_a);
+# tϕs = [Truncated(Normal(Q_μ[i], sqrt(Q_σ[i])), lb[i], ub[i]) for i in eachindex(rxns)];
 
 ps = []
+xlim_ = [false, [-0.1, 2.5], [-0.2, 2.5], [-0.5, 2.5], [-2.5, 0.5], [-0.2, 2.5], false]
 for (i, ider) in rxns |> enumerate
     _m = (ub[i] - lb[i])/10
-    p = Plots.plot(lb[i] - _m, ub[i] + _m, 
-            xlabel = "v", ylabel = "pdf", label = "Q", title = ider) do v
-        ϕ(v, μ[i], Σ[i, i])
-    end
-    
-    p = Plots.plot!(v -> pdf(tϕs[i], v), lb[i] - _m, ub[i] + _m, label = "Qn")     
+    p = Plots.plot(xlim = xlim_[i], xlabel = "v", ylabel = "pdf", title = ider)
+    Plots.plot!(p, v ->  ϕ(v, Q_μ[i], Q_σ[i]), lb[i] - _m, ub[i] + _m, label = "Q", 
+        color = :blue, lw = 2)
+    Plots.plot!(p, v ->  ϕ(v, naQ_μ[i], naQ_σ[i]), lb[i] - _m, ub[i] + _m, label = "na-Q", 
+        color = :black, lw = 2)    
+    Plots.plot!(p, v -> pdf(tϕs[i], v), lb[i] - _m, ub[i] + _m, label = "Qn", 
+        color = :red, lw = 2)     
     push!(ps, p)
 end
 
 Plots.plot(ps..., size = [900,900])
 
-S * mean.(tϕs)
-
-
-
-
+# ## Testing agains Chemostat
 
 using Chemostat
 Ch = Chemostat;
 
 model = Ch.Utils.MetNet(S, b, lb, ub, rxns);
 
-epout = Ch.MaxEntEP.maxent_ep(model, alpha = β);
+# +
+# epout = Ch.MaxEntEP.maxent_ep(model, alpha = β);
+# -
 
-tϕs = [Truncated(Normal(epout.μ[i], sqrt(Σ[i,i])), lb[i], ub[i]) for i in eachindex(rxns)];
+ps = []
+for (i, ider) in rxns |> enumerate
+    p = Plots.plot(xlim = xlim_[i], xlabel = "v", ylabel = "pdf", title = ider)
+    Ch.Plots.plot_marginal!(p, model, epout, ider)
+    push!(ps, p)
+end
 
-epout.av 
+Plots.plot(ps..., size = [900,900])
 
-ave
+scalefactor = max(maximum(abs.(lb)), maximum(abs.(ub)));
+ch_a = epout.sol.a .* scalefactor
+ch_d = epout.sol.b .* scalefactor^2;
+
+Qn_μ
 
 
