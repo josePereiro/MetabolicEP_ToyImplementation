@@ -17,6 +17,7 @@
 
 using SpecialFunctions
 using LinearAlgebra
+using Distributions
 using Plots
 pyplot();
 
@@ -201,7 +202,6 @@ function Q(v, μ, Σ)
     return exp(-0.5(v - μ)'*inv(Σ)*(v - μ))/Zq
 end
 
-N, M = size(S)
 a = ψave.(lb, ub)
 d = ψvar.(lb, ub)
 D = Diagonal(1 ./ a)
@@ -218,7 +218,7 @@ end
 
 Plots.plot(ps..., size = [900,900])
 
-# ### Expectation Propagation
+# ### Expectation Propagation (EP)
 
 # EP [26] is an efficient technique to approximate intractable (that is, impossible or impractical to compute analytically) posterior probabilities.
 #
@@ -254,10 +254,10 @@ Plots.plot(ps..., size = [900,900])
 #     \mathbf{\mu}^{(n)} = \mathbf{\Sigma}^{(n)} \, (\beta \, \mathbf{S}^T \, \mathbf{b} + \mathbf{D}^{(n)} \, \mathbf{a})
 # $$
 #
-# $$ \large
+# <!-- $$ \large
 #     Z_{Q^{(n)}} = (2 \, \pi)^{\frac{N}{2}} (\det \mathbf{\Sigma}^{(n)})^{\frac{1}{2}}
 # $$
-#
+#  -->
 # and, in analogy with equation (10), $D^{(n)}$ is a diagonal matrix of elements $d^{-1}_m$ for all diagonal elements $m \neq n$ and zero for $m = n$.
 
 # The important difference between the **tilted distribution** and the **multivariate Gaussian** $Q(\mathbf{v}|\mathbf{b})$ is that all the intractable priors are
@@ -276,7 +276,7 @@ Plots.plot(ps..., size = [900,900])
 # \ \ \ \ \ \ \small (14) 
 # $$
 #
-# from which we get a relation for the parameters $a_n$, $d_n$. 
+# from which we get a relation for the parameters $a_n$, $d_n$:
 #
 # $$ \large
 #     d_n = \Bigg(
@@ -294,7 +294,15 @@ Plots.plot(ps..., size = [900,900])
 #     \Bigg]
 # $$
 #
-# where
+# The **moments of the tilted distribution** can be found as:
+#
+# $$ \large
+#     {\langle v_n \rangle}_{Q^{(n)}} = \mu^{(n)}_n + 
+#     \frac{\mathcal{N}(A^{(n)}_n) - \mathcal{N}(B^{(n)}_n)}
+#         {\Phi(B^{(n)}_n) - \Phi(A^{(n)}_n)}
+#         \sqrt{\Sigma^{(n)}_{nn}}
+# $$
+#
 #
 # $$ \large
 #     {\langle v_n^2 \rangle}_{Q^{(n)}} - {\langle v_n \rangle}_{Q^{(n)}} =
@@ -317,60 +325,128 @@ Plots.plot(ps..., size = [900,900])
 #     \Bigg]
 # $$
 #
+# where
+#
 # $$ \large
 #     A^{(n)}_n = \frac{v^{inf}_n \, - \mu^{(n)}_n}{\sqrt{\Sigma^{(n)}_{nn}}},\:
 #     B^{(n)}_n = \frac{v^{sup}_n \, - \mu^{(n)}_n}{\sqrt{\Sigma^{(n)}_{nn}}}
 # $$
 #
+# and
+#
+# $$ \large 
+#     \mathcal{N}(x) = \frac{1}{\sqrt{2\pi}}
+#     exp \Bigg(
+#         -\frac{x^2}{2}
+#     \Bigg)
+# $$ is the probability density function of the standard normal distribution and
 #
 # $$ \large
-#     {\langle v_n \rangle}_{Q^{(n)}} = \mu^{(n)}_n + 
-#     \frac{\mathcal{N}(A^{(n)}_n) - \mathcal{N}(B^{(n)}_n)}
-#         {\Phi(B^{(n)}_n) - \Phi(A^{(n)}_n)}
-#         \sqrt{\Sigma^{(n)}_{nn}}
+#     \Phi(x) = \frac{1}{2} \Bigg[1 + erf(\frac{2}{\sqrt{2}})\Bigg]
 # $$
+# is its comulative.
 #
-
-#
-
-
 
 # EP consists in sequentially repeating this update step for all the other fluxes and iterate until we reach a numerical convergence. At the fixed point, we directly estimate the **marginal posteriors** $P_n(v_n|\mathbf{b})$ , for $n \in \{1, ... ,N\}$, from marginalization of the **tilted distribution** $Q^{(n)}$ that turns out to be a **truncated Gaussian** density in the interval $[v_n^{inf} , v_n^{sup}]$ 
 #
 # At difference from the **non-adaptive approach**, the EP algorithm determines the **approximated prior** density by trying to reproduce the effect that the **true prior density** has on variable $v_n$, including the interaction of this term with the rest of the system. First, the information encoded in the stoichiometric matrix is surely  encompassed in the computation of the means and the variances of the approximation since both the distributions $Q^{(n)}$ and $Q$ contain the exact expression of the **likelihood**. Second, the refinement of each prior also depends on the parameters of all the other fluxes.
 
+Φ(x) = 0.5*(1.0 + erf(x/sqrt(2.0)));
+
+Plots.plot(Φ, -10, 10, label = "Φ", 
+    xlabel = "v", ylabel = "pdf", size = [300, 200], legend = :topleft)
+Plots.plot!(ϕ, -10, 10, label = "ϕ")
+
+# ### EP Implementation
+# This implementation is just for educative propose, for a efficient one see the reference. 
+
+# +
+iters = 5000
+const β = 1e12
+
+# This are constants
+_βSS = β*S'*S
+_βSb = β*S'*b
+
+# initialize a and d, just using the parameters of the exact priors
+a = ψave.(lb, ub)
+d = ψvar.(lb, ub)
+
+# For numerical reasons we normalize all
+# nfactor = 1.0 # max(maximum(abs.(ub)), maximum(abs.(lb))) # scale factor
+nlb = copy(lb) # ./ nfactor
+nub = copy(ub) # ./ nfactor
+
+# track the tilted parameters in each iteration
+μss = [] 
+σss = [] 
+
+# Last itaration
+ave = zeros(Float64, N)
+var = zeros(Float64, N)
+for it in 1:iters
+    for (n, rxn) in enumerate(rxns)
+        
+        # Tilted parameters
+        Dn = Diagonal(1 ./ d)
+        Dn[n,n] = 0.0
+        
+        Σn = inv(_βSS + Dn)
+        μn = Σn*(_βSb + Dn * a)
+        
+        # Tilted moments
+        An = (nlb[n] - μn[n])/sqrt(Σn[n,n])
+        Bn = (nub[n] - μn[n])/sqrt(Σn[n,n])
+        ϕAn = ϕ(An);  ϕBn = ϕ(Bn)
+        ΦAn = Φ(An); ΦBn = Φ(Bn)
+        
+        ave[n] = μn[n] + ((ϕAn - ϕBn)/(ΦBn - ΦAn)) * sqrt(Σn[n,n])
+        var[n] = Σn[n,n] * (1 + (An*ϕAn - Bn*ϕBn)/(ΦBn - ΦAn) - ((ϕAn - ϕBn)/(ΦBn - ΦAn))^2)
+        
+        
+        # Updating an and dn
+        d[n] = 1/(1/var[n] - 1/Σn[n,n])
+        a[n] = d[n]*(ave[n]*(1/d[n] + 1/Σn[n,n]) - μn[n]/Σn[n,n])
+    end
+end
+# -
+
+D = Diagonal(1 ./ a)
+Σ = inv(β*S'S + D)
+μ = Σ*(β*S'b + D*a);
+tϕs = [Truncated(Normal(μ[i], sqrt(Σ[i,i])), lb[i], ub[i]) for i in eachindex(rxns)];
+
+ps = []
+for (i, ider) in rxns |> enumerate
+    _m = (ub[i] - lb[i])/10
+    p = Plots.plot(lb[i] - _m, ub[i] + _m, 
+            xlabel = "v", ylabel = "pdf", label = "Q", title = ider) do v
+        ϕ(v, μ[i], Σ[i, i])
+    end
+    
+    p = Plots.plot!(v -> pdf(tϕs[i], v), lb[i] - _m, ub[i] + _m, label = "Qn")     
+    push!(ps, p)
+end
+
+Plots.plot(ps..., size = [900,900])
+
+S * mean.(tϕs)
 
 
 
 
 
+using Chemostat
+Ch = Chemostat;
+
+model = Ch.Utils.MetNet(S, b, lb, ub, rxns);
+
+epout = Ch.MaxEntEP.maxent_ep(model, alpha = β);
+
+tϕs = [Truncated(Normal(epout.μ[i], sqrt(Σ[i,i])), lb[i], ub[i]) for i in eachindex(rxns)];
+
+epout.av 
+
+ave
 
 
-
-
-
-# ***
-# $\mathbf{\text{Gradient Tree Boosting Algorithm}}$<br>
-# ***
-# 1.&emsp;Initialize model with a constant value $$f_{0}(x) = \textrm{arg min}_{\gamma} \sum \limits _{i=1} ^{N} L(y_{i}, \gamma)$$
-# 2.&emsp;For m = 1 to M:<br>
-# &emsp;&emsp;(a)&emsp;For $i = 1,2,...,N$ compute<br>
-#     $$r_{im} = - \displaystyle \Bigg[\frac{\partial L(y_{i}, f(x_{i}))}{\partial f(x_{i})}\Bigg]_{f=f_{m−1}}$$
-# &emsp;&emsp;(b)&emsp;Fit a regression tree to the targets $r_{im}$ giving terminal regions<br>
-# &emsp;&emsp;&emsp;&emsp;$R_{jm}, j = 1, 2, . . . , J_{m}.$<br><br>
-# &emsp;&emsp;(c)&emsp;For $j = 1, 2, . . . , J_{m}$ compute<br>
-# $$\gamma_{jm} = \underset{\gamma}{\textrm{arg min}} \sum \limits _{x_{i} \in R_{jm}} L(y_{i}, f_{m−1}(x_{i}) + \gamma)$$
-# <br>
-# &emsp;&emsp;(d)&emsp;Update $f_{m}(x) = f_{m−1}(x) + \sum _{j=1} ^{J_{m}} \gamma_{jm} I(x \in R_{jm})$<br><br>
-# 3. Output $\hat{f}(x) = f_{M}(x)$
-# ***
-
-# $ \Large f_{\psi} \int_{a} ^{b}$
-
-
-
-# \begin{equation*}
-# 1 +  \frac{q^2}{(1-q)}+\frac{q^6}{(1-q)(1-q^2)}+\cdots =
-# \prod_{j=0}^{\infty}\frac{1}{(1-q^{5j+2})(1-q^{5j+3})},
-# \quad\quad \text{for $|q|<1$}.
-# \end{equation*}
