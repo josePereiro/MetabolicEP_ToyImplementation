@@ -3,7 +3,7 @@
 # jupyter:
 #   jupytext:
 #     cell_metadata_filter: -all
-#     formats: jl,ipynb
+#     formats: jl:light,ipynb
 #     text_representation:
 #       extension: .jl
 #       format_name: light
@@ -218,10 +218,11 @@ naQ_σ = naQ_Σ |> diag
 naQ_μ = naQ_Σ * (βSb + D * naϕ_a);
 # -
 
+# Later we compare this results with the given by EP
 ps = []
 for (i, ider) in rxns |> enumerate
     p = Plots.plot(xlabel = "v", ylabel = "pdf", title = ider)
-    plot!(p, v -> ϕ(v, naQ_μ[i], naQ_σ[i]), lb[i], ub[i], label = "", lw = 3)
+    plot!(p, v -> ϕ(v, naQ_μ[i], naQ_σ[i]), lb[i], ub[i], label = "", lw = 3, color = :black)
     vline!(p, [naQ_μ[i]], label = "", color = :black)
     vline!(p, [naQ_μ[i] - sqrt(naQ_σ[i])], ls = :dash, label = "", color = :black)
     vline!(p, [naQ_μ[i] + sqrt(naQ_σ[i])], ls = :dash, label = "", color = :black)
@@ -244,7 +245,7 @@ Plots.plot(ps..., size = [900,900])
 #     \Bigg{]} 
 #     \psi_n(v_n)
 #     \prod_{m\neq n}^{N} \phi_{m}(v_m; a_m, d_m)
-# \ \ \ \ \ \ \small (13) 
+# \ \ \ \ \ \ \small (14) 
 # $$
 #
 # $$ \large
@@ -254,16 +255,19 @@ Plots.plot(ps..., size = [900,900])
 #        -\frac{1}{2} (\mathbf{v} - \mathbf{\mu}^{(n)})^T \, {\mathbf{\Sigma}^{(n)}}^{-1} \, (\mathbf{v} - \mathbf{\mu}^{(n)})
 #     \Bigg{]} 
 #     \psi_n(v_n)
+# \ \ \ \ \ \ \small (15)
 # $$
 #
 # where
 #     
 # $$ \large
 #     {\mathbf{\Sigma}^{(n)}}^{-1} = \beta \, \mathbf{S}^T \mathbf{S} + \mathbf{D}^{(n)}
+# \ \ \ \ \ \ \small (16)
 # $$
 #
 # $$ \large
 #     \mathbf{\mu}^{(n)} = \mathbf{\Sigma}^{(n)} \, (\beta \, \mathbf{S}^T \, \mathbf{b} + \mathbf{D}^{(n)} \, \mathbf{a})
+# \ \ \ \ \ \ \small (17)
 # $$
 #
 # <!-- $$ \large
@@ -285,7 +289,7 @@ Plots.plot(ps..., size = [900,900])
 #         {\langle v_n^2 \rangle}_{Q^{(n)}} = {\langle v_n^2 \rangle}_{Q} \\
 #     \end{array}
 # \right. 
-# \ \ \ \ \ \ \small (14) 
+# \ \ \ \ \ \ \small (18) 
 # $$
 #
 # from which we get a relation for the parameters $a_n$, $d_n$:
@@ -295,6 +299,7 @@ Plots.plot(ps..., size = [900,900])
 #         \frac{1}{{\langle v_n^2 \rangle}_{Q^{(n)}} - {\langle v_n \rangle}_{Q^{(n)}}^2} -
 #         \frac{1}{\Sigma_{nn}^{(n)}}
 #     \Bigg)^{-1}
+# \ \ \ \ \ \ \small (19)
 # $$
 #
 # $$ \large
@@ -304,6 +309,7 @@ Plots.plot(ps..., size = [900,900])
 #             \frac{1}{d_n} + \frac{1}{\Sigma^{(n)}_{nn}} 
 #         \Bigg) - \frac{\mu^{(n)}_n}{\Sigma^{(n)}_{nn}} 
 #     \Bigg]
+# \ \ \ \ \ \ \small (20)
 # $$
 #
 # The **moments of the tilted distribution** can be found as:
@@ -313,6 +319,7 @@ Plots.plot(ps..., size = [900,900])
 #     \frac{\mathcal{N}(A^{(n)}_n) - \mathcal{N}(B^{(n)}_n)}
 #         {\Phi(B^{(n)}_n) - \Phi(A^{(n)}_n)}
 #         \sqrt{\Sigma^{(n)}_{nn}}
+# \ \ \ \ \ \ \small (21)
 # $$
 #
 #
@@ -335,6 +342,7 @@ Plots.plot(ps..., size = [900,900])
 #             {\Phi(B^{(n)}_n) - \Phi(A^{(n)}_n)}
 #         \Bigg)^2 \,
 #     \Bigg]
+# \ \ \ \ \ \ \small (22)
 # $$
 #
 # where
@@ -366,8 +374,8 @@ Plots.plot(ps..., size = [900,900])
 Φ(x) = 0.5*(1.0 + erf(x/sqrt(2.0)));
 
 plot(title = "Standard Normal", xlabel = "v", ylabel = "pdf", legend = :topleft)
-plot!(Φ, -10, 10, label = "Φ")
-plot!(ϕ, -10, 10, label = "ϕ")
+plot!(Φ, -10, 10, label = "Φ", lw = 3)
+plot!(ϕ, -10, 10, label = "ϕ", lw = 3)
 
 # ### EP Implementation
 # This implementation is just for educative propose, for a efficient one see the reference. 
@@ -432,26 +440,27 @@ tϕs = [Truncated(Normal(Qn_μ[i], sqrt(Qn_σ[i])), lb[i], ub[i]) for i in eachi
 # -
 
 ps = []
-xlim_ = [false, [-0.1, 2.5], [-0.2, 2.5], [-0.5, 2.5], [-2.5, 0.5], [-0.2, 2.5], false]
+xlim_ = [false, [-0.1, 2.5], [-0.2, 2.5], [-0.5, 2.5], [-2.5, 0.5], [-0.2, 1.0], false]
 for (i, ider) in rxns |> enumerate
     
     _m = (ub[i] - lb[i])/10
     
-    # Multivariate posterior normal
     p = Plots.plot(xlim = xlim_[i], xlabel = "v", ylabel = "pdf", title = ider)
+    
+    # Multivariate posterior normal
     Plots.plot!(p, v ->  ϕ(v, Q_μ[i], Q_σ[i]), lb[i] - _m, ub[i] + _m, label = "Q", 
-        color = :blue, lw = 2)
+        color = :blue, lw = 3)
     Plots.vline!(p, [Q_μ[i]], color = :blue, label = "", lw = 1)
     Plots.vline!(p, [Q_μ[i] - sqrt(Q_σ[i])], color = :blue, label = "", lw = 1, ls = :dash)
     Plots.vline!(p, [Q_μ[i] + sqrt(Q_σ[i])], color = :blue, label = "", lw = 1, ls = :dash)
     
     
     Plots.plot!(p, v ->  ϕ(v, naQ_μ[i], naQ_σ[i]), lb[i] - _m, ub[i] + _m, label = "na-Q", 
-        color = :black, lw = 2)    
+        color = :black, lw = 3)    
     
     
     Plots.plot!(p, v -> pdf(tϕs[i], v), lb[i] - _m, ub[i] + _m, label = "Qn", 
-        color = :red, lw = 2)     
+        color = :red, lw = 3)     
     Plots.vline!(p, [mean(tϕs[i])], color = :red, label = "", lw = 1)
     Plots.vline!(p, [mean(tϕs[i]) - sqrt(var(tϕs[i]))], color = :red, label = "", lw = 1, ls = :dash)
     Plots.vline!(p, [mean(tϕs[i]) + sqrt(var(tϕs[i]))], color = :red, label = "", lw = 1, ls = :dash)
@@ -461,4 +470,7 @@ end
 
 Plots.plot(ps..., size = [1000,1000])
 
+# We need an orthogonal technique for evaluating this results (like Monte Carlos). 
+# In this material we do not provide one, but here we show the results using https://github.com/anna-pa-m/Metabolic-EP. In this case it was used a Hit-and-Run(HR) Monte Carlos implementation for sampling (1e6 samples) the solution space (see References). The graphs also show the results for a more numerically efficient EP implementation.
 
+# <img src="hr-ep_results.png" alt="Drawing"/>
