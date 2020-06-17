@@ -27,12 +27,9 @@ pyplot();
 #
 # Braunstein, Alfredo, Anna Paola Muntoni, and Andrea Pagnani. “An Analytic Approximation of the Feasible Space of Metabolic Networks.” Nature Communications 8, no. 1 (April 6, 2017): 1–9. https://doi.org/10.1038/ncomms14915.
 
-# ### Formulating of the problem
+# ### Metabolic Toy Model
 
-# We are going to formulate an iterative strategy to solve the problem of finding a multivariate probability measure over the set of fluxes $n$ compatible with equations (1 and 2). 
-#
-# $$  \large \mathbf{Sv} = \mathbf{b} \ \ \ \ \ \ \small (1) $$         
-# $$ \large  \mathbf{lb} \le \mathbf{v} \le \mathbf{ub} \ \ \ \ \ \ \small (2) $$         
+# <img src="toy_model.png" alt="Drawing" style="width: 400px;"/>
 
 # +
 # Toy Model
@@ -49,12 +46,19 @@ mets = ["G", "E", "P", "L"]
 b =    [0.0, 0.0, 0.0, 0.0] # demand
 metNames = ["Glucose", "Energy", "Intermediate Product" , "Lactate"];
 
-rxns = ["gt"  ,"ferm" ,"resp" , "ldh" ,  "lt" , "biom", "atpm"];
+rxns = ["gt"  ,"glyc" ,"resp" , "ldh" ,  "lt" , "biom", "atpm"];
 lb =   [0.0   , 0.0   , 0.0   ,  0.0  , -10.0,   0.0,     0.5];
 ub =   [1.0   , 10.0  , 10.0  , 10.0  ,   0.0,  10.0,    10.0];
-rxnNames = ["Glucose transport", "Fermentation", "Respiration", 
+rxnNames = ["Glucose transport", "Glycolysis", "Respiration", 
     "Lactate DH", "Lactate transport", "Biomass production rate", "atp demand"];
 # -
+
+# ### Formulating of the problem
+
+# We are going to formulate an iterative strategy to solve the problem of finding a multivariate probability measure over the set of fluxes $n$ compatible with equations (1 and 2). 
+#
+# $$  \large \mathbf{Sv} = \mathbf{b} \ \ \ \ \ \ \small (1) $$         
+# $$ \large  \mathbf{lb} \le \mathbf{v} \le \mathbf{ub} \ \ \ \ \ \ \small (2) $$         
 
 # For a vector of fluxes satisfying bounds 2, we can define a quadratic energy function $E(n)$ whose minimum(s) lies on the assignment of variables $v$ satisfying the stoichiometric constraints in equation (1)
 #
@@ -228,7 +232,7 @@ Plots.plot(ps..., size = [900,900])
 
 # ### Expectation Propagation (EP)
 
-# EP [26] is an efficient technique to approximate intractable (that is, impossible or impractical to compute analytically) posterior probabilities.
+# EP is an efficient technique to approximate intractable (that is, impossible or impractical to compute analytically) posterior probabilities.
 #
 # Let us consider the $n$th flux and its corresponding approximate prior $\phi_n(v_n; a_n, d_n)$. We define a **tilted distribution** $Q^{(n)}$ as:
 #
