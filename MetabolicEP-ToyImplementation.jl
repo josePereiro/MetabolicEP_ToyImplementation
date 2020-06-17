@@ -33,7 +33,7 @@ pyplot();
 
 # +
 # Toy Model
-# rxns: gt    ferm  resp  ldh   lt   biom    atpm  # mets
+# rxns: gt    glyc  resp  ldh   lt   biom    atpm  # mets
 S = [   1.0  -1.0   0.0   0.0   0.0   0.0    0.0;  #  G
         0.0   2.0  18.0   0.0   0.0  -55.0  -5.0;  #  E
         0.0   2.0  -1.0  -1.0   0.0   0.0    0.0;  #  P
