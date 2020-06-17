@@ -10,7 +10,7 @@ This is a short implementation of the EP algorithm as described in [1] for a toy
 git clone https://github.com/josePereiro/MetabolicEP_ToyImplementation
 ```
 
-MetabolicEP-ToyImplementation.jl is aim to be read as a jupyter notebook, even when it have not the `.ipynb` extension, see [jupytext](https://github.com/mwouts/jupytext).
+`MetabolicEP-ToyImplementation.jl` is aim to be read as a jupyter notebook, even when it have not the `.ipynb` extension, see [jupytext](https://github.com/mwouts/jupytext).
 
 I deliver a julia `Project.toml` that can be instantiated, but the dependency are really generic and should work for any `v1.x` julia version.
 
