@@ -2,7 +2,7 @@
 
 This is a short implementation of the EP algorithm as described in [1] for a toy metabolic network. The code is heavily commented and all formulas are embedded for easy understanding.
 
-**This implementation have only educative proposes, for a numerically efficient implementatio, see the reference.**
+**This implementation have only educative proposes, for a numerically efficient implementation, see the reference.**
 
 ## Installation 
 
