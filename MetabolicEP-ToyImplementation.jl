@@ -205,19 +205,22 @@ naϕ_a = ψave.(lb, ub)
 naϕ_d = ψvar.(lb, ub)
 
 # This are constants
-_βSS = β*S'*S
-_βSb = β*S'*b
+βSS = β*S'*S
+βSb = β*S'*b
 
-_D = Diagonal(1 ./ naϕ_d)
-naQ_Σ = inv(_βSS + _D)
+D = Diagonal(1 ./ naϕ_d)
+naQ_Σ = inv(βSS + D)
 naQ_σ = naQ_Σ |> diag
-naQ_μ = naQ_Σ * (_βSb + _D * naϕ_a);
+naQ_μ = naQ_Σ * (βSb + D * naϕ_a);
 # -
 
 ps = []
 for (i, ider) in rxns |> enumerate
     p = Plots.plot(xlabel = "v", ylabel = "pdf", title = ider)
-    Plots.plot!(p, v -> ϕ(v, naQ_μ[i], naQ_σ[i]), lb[i], ub[i], label = "")
+    plot!(p, v -> ϕ(v, naQ_μ[i], naQ_σ[i]), lb[i], ub[i], label = "", lw = 3)
+    vline!(p, [naQ_μ[i]], label = "", color = :black)
+    vline!(p, [naQ_μ[i] - sqrt(naQ_σ[i])], ls = :dash, label = "", color = :black)
+    vline!(p, [naQ_μ[i] + sqrt(naQ_σ[i])], ls = :dash, label = "", color = :black)
     push!(ps, p)
 end
 
@@ -344,7 +347,7 @@ Plots.plot(ps..., size = [900,900])
 #     exp \Bigg(
 #         -\frac{x^2}{2}
 #     \Bigg)
-# $$ is the probability density function of the standard normal distribution and
+# $$ is the probability density function of the standard normal distribution, $\phi(v_n; 1, 0)$, and
 #
 # $$ \large
 #     \Phi(x) = \frac{1}{2} \Bigg[1 + erf(\frac{2}{\sqrt{2}})\Bigg]
@@ -358,104 +361,100 @@ Plots.plot(ps..., size = [900,900])
 
 Φ(x) = 0.5*(1.0 + erf(x/sqrt(2.0)));
 
-Plots.plot(Φ, -10, 10, label = "Φ", 
-    xlabel = "v", ylabel = "pdf", size = [300, 200], legend = :topleft)
-Plots.plot!(ϕ, -10, 10, label = "ϕ")
+plot(title = "Standard Normal", xlabel = "v", ylabel = "pdf", legend = :topleft)
+plot!(Φ, -10, 10, label = "Φ")
+plot!(ϕ, -10, 10, label = "ϕ")
 
 # ### EP Implementation
 # This implementation is just for educative propose, for a efficient one see the reference. 
 
 # +
 iters = 10000
-β = 1e12
 
 # initialize a and d, just using the parameters of the exact priors
 ϕ_a = ψave.(lb, ub) # mean of the normal priors
 ϕ_d = ψvar.(lb, ub) # variance of the normal priors
 
 
-# Tilted (Qn) marginal params
-Qn_μ = zeros(Float64, N) # mean vector of the marginals of the tilted (normal part)
-Qn_σ = zeros(Float64, N) # variance vector of the marginals of the tilted (normal part)
-Qn_mμ = zeros(Float64, N) # mean vector of the marginals of the tilted (truncated normal)
-Qn_mσ = zeros(Float64, N) # variance vector of the marginals of the tilted (truncated normal)
+# Tilted (Qn) marginal parameters
+Qn_μ = zeros(Float64, N) # marginal mean of the normal part of the tilted distributions
+Qn_σ = zeros(Float64, N) # marginal variance of the normal part of the tilted distributions
+
 for it in 1:iters
     Dn = Diagonal(1 ./ ϕ_d)
     for (n, rxn) in enumerate(rxns)
         
         # Tilted parameters
-        Dn[n,n] = 0.0
-        
         # Parameters of the normal part of the tilted
-        Qn_Σ = inv(_βSS + Dn)
-        Qn_μ[n] = (Qn_Σ*(_βSb + Dn * ϕ_a))[n]
+        Dn[n,n] = 0.0
+        Qn_Σ = inv(βSS + Dn)
+        Qn_μ[n] = (Qn_Σ*(βSb + Dn * ϕ_a))[n]
         Qn_σ[n] = Qn_Σ[n,n]
         
-        # Tilted marginal moments
+        # moments of the tilted nth marginal (truncated normal)
         An = (lb[n] - Qn_μ[n])/sqrt(Qn_σ[n])
         Bn = (ub[n] - Qn_μ[n])/sqrt(Qn_σ[n])
         ϕAn = ϕ(An);  ϕBn = ϕ(Bn)
         ΦAn = Φ(An); ΦBn = Φ(Bn)
         
-        Qn_mμ[n] = Qn_μ[n] + ((ϕAn - ϕBn)/(ΦBn - ΦAn)) * sqrt(Qn_σ[n])
-        Qn_mσ[n] = Qn_σ[n] * (1 + (An*ϕAn - Bn*ϕBn)/(ΦBn - ΦAn) - ((ϕAn - ϕBn)/(ΦBn - ΦAn))^2)
+        Qn_mμ = Qn_μ[n] + ((ϕAn - ϕBn)/(ΦBn - ΦAn)) * sqrt(Qn_σ[n])
+        Qn_mσ = Qn_σ[n] * (1 + (An*ϕAn - Bn*ϕBn)/(ΦBn - ΦAn) - ((ϕAn - ϕBn)/(ΦBn - ΦAn))^2)
         
         
         # Updating an and dn
-        ϕ_d[n] = 1/(1/Qn_mσ[n] - 1/Qn_σ[n])
-        ϕ_a[n] = ϕ_d[n]*(Qn_mμ[n]*(1/ϕ_d[n] + 1/Qn_σ[n]) - Qn_μ[n]/Qn_σ[n])
+        ϕ_d[n] = 1/(1/Qn_mσ - 1/Qn_σ[n])
+        ϕ_a[n] = ϕ_d[n]*(Qn_mμ*(1/ϕ_d[n] + 1/Qn_σ[n]) - Qn_μ[n]/Qn_σ[n])
         
         Dn[n,n] = 1 / ϕ_d[n]
     end
 end
-# -
 
-_D = Diagonal(1 ./ ϕ_d)
-Q_Σ = inv(_βSS + _D)
-Q_σ = Q_Σ |> diag
-Q_μ = Q_Σ*(_βSb + _D*ϕ_a);
-# tϕs = [Truncated(Normal(Q_μ[i], sqrt(Q_σ[i])), lb[i], ub[i]) for i in eachindex(rxns)];
+# +
+# After computed ϕ_a and ϕ_d we can rebuild any join distribution.
+# Note that this ϕ_a and ϕ_d ensure that any tilted posterior distribution (Qn) and the multivariate 
+# normal posterior distribution (Q) produce the same marginal parameters for the corresponding fluxes.
+# Note also, that, even when this marginals (the one produced from Qn and the one produced from Q) 
+# have the same mean and variance, they are not equal. The former is a truncated normal and the later is a normal
+# univariate distribution.
+
+# Multivariate Normal Posterior and its marginals parameters
+D = Diagonal(1 ./ ϕ_d)
+Q_Σ = inv(βSS + D)
+Q_σ = Q_Σ |> diag # the variance of the marginals
+Q_μ = Q_Σ*(βSb + D*ϕ_a) # the mean of the marginals
+
+# Truncated (Tilted) Marginals Distributions
+tϕs = [Truncated(Normal(Qn_μ[i], sqrt(Qn_σ[i])), lb[i], ub[i]) for i in eachindex(rxns)];
+# -
 
 ps = []
 xlim_ = [false, [-0.1, 2.5], [-0.2, 2.5], [-0.5, 2.5], [-2.5, 0.5], [-0.2, 2.5], false]
 for (i, ider) in rxns |> enumerate
+    
     _m = (ub[i] - lb[i])/10
+    
+    # Multivariate posterior normal
     p = Plots.plot(xlim = xlim_[i], xlabel = "v", ylabel = "pdf", title = ider)
     Plots.plot!(p, v ->  ϕ(v, Q_μ[i], Q_σ[i]), lb[i] - _m, ub[i] + _m, label = "Q", 
         color = :blue, lw = 2)
+    Plots.vline!(p, [Q_μ[i]], color = :blue, label = "", lw = 1)
+    Plots.vline!(p, [Q_μ[i] - sqrt(Q_σ[i])], color = :blue, label = "", lw = 1, ls = :dash)
+    Plots.vline!(p, [Q_μ[i] + sqrt(Q_σ[i])], color = :blue, label = "", lw = 1, ls = :dash)
+    
+    
     Plots.plot!(p, v ->  ϕ(v, naQ_μ[i], naQ_σ[i]), lb[i] - _m, ub[i] + _m, label = "na-Q", 
         color = :black, lw = 2)    
+    
+    
     Plots.plot!(p, v -> pdf(tϕs[i], v), lb[i] - _m, ub[i] + _m, label = "Qn", 
         color = :red, lw = 2)     
+    Plots.vline!(p, [mean(tϕs[i])], color = :red, label = "", lw = 1)
+    Plots.vline!(p, [mean(tϕs[i]) - sqrt(var(tϕs[i]))], color = :red, label = "", lw = 1, ls = :dash)
+    Plots.vline!(p, [mean(tϕs[i]) + sqrt(var(tϕs[i]))], color = :red, label = "", lw = 1, ls = :dash)
+
     push!(ps, p)
 end
 
-Plots.plot(ps..., size = [900,900])
-
-# ## Testing agains Chemostat
-
-using Chemostat
-Ch = Chemostat;
-
-model = Ch.Utils.MetNet(S, b, lb, ub, rxns);
-
-# +
-# epout = Ch.MaxEntEP.maxent_ep(model, alpha = β);
-# -
-
-ps = []
-for (i, ider) in rxns |> enumerate
-    p = Plots.plot(xlim = xlim_[i], xlabel = "v", ylabel = "pdf", title = ider)
-    Ch.Plots.plot_marginal!(p, model, epout, ider)
-    push!(ps, p)
-end
-
-Plots.plot(ps..., size = [900,900])
-
-scalefactor = max(maximum(abs.(lb)), maximum(abs.(ub)));
-ch_a = epout.sol.a .* scalefactor
-ch_d = epout.sol.b .* scalefactor^2;
-
-Qn_μ
+Plots.plot(ps..., size = [1000,1000])
 
 
